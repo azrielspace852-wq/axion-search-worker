@@ -1,0 +1,118 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const root = path.resolve(__dirname, '..');
+const read = (name) => fs.readFileSync(path.join(root, name), 'utf8');
+const pagesConfig = JSON.parse(read('pages/wrangler.jsonc'));
+const workerConfig = JSON.parse(read('workers/wrangler.jsonc'));
+const worker = read('workers/src/index.js');
+const engine = read('workers/src/search-engine.js');
+const sdk = read('pages/public/sdk/axion-search-sdk.js');
+const redirects = read('pages/public/_redirects');
+const pageBinding = read('pages/functions/api/[[path]].js');
+const healthBinding = read('pages/functions/health.js');
+const shortUrlFunction = read('pages/functions/s/[[path]].js');
+const pkg = JSON.parse(read('package.json'));
+const lock = JSON.parse(read('package-lock.json'));
+const app = read('pages/public/js/app.js');
+const searchPage = read('pages/public/search.html');
+const searchJs = read('pages/public/js/search.js');
+const privacy = read('pages/public/privacy.html');
+const docs = read('pages/public/docs.html');
+const AxionSDK = require('../pages/public/sdk/axion-search-sdk.js');
+const defaultSdk = new AxionSDK();
+
+assert.equal(defaultSdk.apiBase, 'https://api.search.axn.cc.cd');
+assert.equal(defaultSdk.siteBase, 'https://search.xxn.cc.cd');
+assert.equal(defaultSdk.searchUrl('a b'), 'https://search.xxn.cc.cd/search?q=a%20b');
+assert.equal(defaultSdk.shortUrl('a b'), 'https://search.xxn.cc.cd/s/a%20b');
+assert.deepEqual(defaultSdk.models(), ['gemma-4-31b-it', 'gemma-4-26b-a4b-it']);
+const legacySdk = new AxionSDK({ base: 'https://legacy.example' });
+assert.equal(legacySdk.apiBase, 'https://legacy.example');
+assert.equal(legacySdk.siteBase, 'https://legacy.example');
+
+assert.equal(pkg.version, '4.2.0');
+assert.equal(lock.packages[''].version, pkg.version);
+assert.equal(pagesConfig.name, 'axion-search-site');
+assert.equal(pagesConfig.pages_build_output_dir, './public');
+assert.equal(pagesConfig.limits.cpu_ms, 10);
+assert.equal(pagesConfig.services[0].binding, 'AXION_SEARCH_API');
+assert.equal(pagesConfig.services[0].service, workerConfig.name);
+assert.equal(workerConfig.name, 'axion-search-api');
+assert.equal(workerConfig.limits.cpu_ms, 10);
+assert.equal(workerConfig.routes[0].pattern, 'api.search.axn.cc.cd');
+assert.equal(workerConfig.routes[0].custom_domain, true);
+assert.ok(workerConfig.vars.SITE_DOMAIN === 'https://search.xxn.cc.cd');
+assert.ok(workerConfig.vars.API_DOMAIN === 'https://api.search.axn.cc.cd');
+assert.deepEqual(engine.match(/const MODEL_ROTATION = \[([^\]]+)\]/)[1].match(/'([^']+)'/g).map(x => x.slice(1, -1)), ['gemma-4-31b-it', 'gemma-4-26b-a4b-it']);
+assert.ok(engine.includes('GOOGLE_AI_STUDIO_API_KEY_1'));
+assert.ok(engine.includes('streamGenerateContent'));
+assert.ok(engine.includes('MODEL_ROTATION'));
+assert.ok(worker.includes("url.searchParams.get('stream') === '1'"));
+assert.ok(worker.includes('text/event-stream'));
+assert.ok(worker.includes("url.searchParams.get('type') || 'all'"));
+assert.ok(!worker.includes('body?.model'), 'Worker must not accept a client-chosen AI model');
+
+for (const endpoint of ['/api/v1/search', '/api/v1/tool/search', '/api/v1/chat', '/api/search', '/api/summary', '/health']) assert.ok(worker.includes(endpoint), `Worker route missing: ${endpoint}`);
+for (const page of ['/search', '/settings', '/privacy', '/safesearch', '/docs', '/changelog', '/roadmap', '/blueprint', '/bible', '/sdk']) assert.ok(redirects.includes(`${page} `), `Pages rewrite missing: ${page}`);
+assert.ok(pageBinding.includes('context.env.AXION_SEARCH_API') && pageBinding.includes('api.fetch(context.request)'));
+assert.ok(healthBinding.includes('context.env.AXION_SEARCH_API') && healthBinding.includes('api.fetch(context.request)'));
+assert.ok(shortUrlFunction.includes('Response.redirect') && shortUrlFunction.includes('/search?q='));
+assert.ok(sdk.includes("var DEFAULT_API = 'https://api.search.axn.cc.cd'"));
+assert.ok(sdk.includes("var DEFAULT_SITE = 'https://search.xxn.cc.cd'"));
+for (const method of ['search', 'summary', 'summaryStream', 'chat', 'chatStream', 'aiToolSearch', 'health', 'searchUrl', 'shortUrl', 'openaiToolSpec', 'models']) assert.ok(sdk.includes(`AxionSDK.prototype.${method}`), `SDK method missing: ${method}`);
+for (const provider of ['webDuckDuckGo', 'webBing', 'webGoogleBasic', 'webYahoo', 'webGoogle', 'webMojeek', 'webBrave', 'imgBing', 'imgDuckDuckGo', 'vidBing', 'vidYouTube', 'newsGoogle', 'newsBing', 'audioITunes']) assert.ok(engine.includes(provider), `Search provider missing: ${provider}`);
+for (const vertical of ['web:', 'images:', 'videos:', 'news:', 'audio:', 'apps:', 'shop:', 'axion:']) assert.ok(engine.includes(vertical), `Search vertical missing: ${vertical}`);
+assert.ok(engine.includes('summarizeAI') && engine.includes('chatAI'));
+assert.ok(fs.existsSync(path.join(root, 'pages/public/sitemap.xml')));
+assert.ok(fs.existsSync(path.join(root, 'pages/public/robots.txt')));
+assert.ok(fs.existsSync(path.join(root, 'pages/public/opensearch.xml')));
+assert.ok(fs.existsSync(path.join(root, 'pages/public/js/app.js')));
+assert.ok(fs.existsSync(path.join(root, 'pages/functions/api/[[path]].js')));
+assert.ok(!fs.existsSync(path.join(root, 'workers/src/src')), 'Duplicate nested worker source must not remain');
+assert.ok(!fs.existsSync(path.join(root, 'archive')), 'Legacy Node/Tunnel/VPN runtime must not be included in release archive');
+assert.ok(!fs.existsSync(path.join(root, 'docker-compose.yml')));
+assert.ok(app.includes("indexedDB.open(HISTORY_DB_NAME") && app.includes("const HISTORY_DB_NAME = 'axion-search-data'"));
+assert.ok(app.includes("localStorage.removeItem('axn_history')"), 'Migration removes old localStorage history after IndexedDB load');
+assert.ok(!searchPage.includes('select id="aiModel"'), 'There must be no model selector UI');
+assert.ok(searchPage.indexOf('data-type="all"') < searchPage.indexOf('data-type="ai"') && searchPage.indexOf('data-type="ai"') < searchPage.indexOf('data-type="web"'), 'All then AI mode must be first tabs');
+assert.ok(searchJs.includes("let currentType = 'all'"));
+assert.ok(searchJs.includes("type === 'site') ? 'all'"));
+assert.ok(privacy.includes('IndexedDB'));
+assert.ok(docs.includes('GOOGLE_AI_STUDIO_API_KEY_1'));
+assert.ok(docs.includes('gemma-4-31b-it') && docs.includes('gemma-4-26b-a4b-it'));
+for (const file of ['pages/public/index.html', 'pages/public/opensearch.xml', 'pages/public/sitemap.xml', 'pages/public/robots.txt']) assert.ok(!read(file).includes('axion-search.axn.cc.cd'), `Stale site host found in ${file}`);
+
+(async () => {
+  const originalFetch = global.fetch;
+  const seen = [];
+  global.fetch = async (url, options = {}) => {
+    seen.push({ url: String(url), options });
+    const isStream = options.headers?.Accept === 'text/event-stream';
+    if (isStream) {
+      return new Response('data: {"type":"meta","model":"gemma-4-31b-it"}\n\ndata: {"type":"delta","text":"Hello "}\n\ndata: {"type":"delta","text":"AXION"}\n\ndata: {"type":"complete","summary":"Hello AXION","model":"gemma-4-31b-it"}\n\n', { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+    }
+    return new Response(JSON.stringify({ ok: true, results: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  try {
+    await defaultSdk.search('test query', { safe: false, lang: 'id' });
+    assert.match(seen[0].url, /^https:\/\/api\.search\.axn\.cc\.cd\/api\/v1\/search\?/);
+    const searchUrl = new URL(seen[0].url);
+    assert.equal(searchUrl.searchParams.get('q'), 'test query');
+    assert.equal(searchUrl.searchParams.get('type'), 'all', 'default SDK search must use All');
+    assert.equal(searchUrl.searchParams.get('safe'), '0');
+    assert.equal(searchUrl.searchParams.get('lang'), 'id');
+    await defaultSdk.chat([{ role: 'user', content: 'hello' }], { lang: 'id' });
+    assert.equal(new URL(seen[1].url).pathname, '/api/v1/chat');
+    assert.equal(seen[1].options.method, 'POST');
+    const posted = JSON.parse(seen[1].options.body);
+    assert.deepEqual(posted.messages, [{ role: 'user', content: 'hello' }]);
+    assert.ok(!Object.prototype.hasOwnProperty.call(posted, 'model'));
+    const events = [];
+    const stream = await defaultSdk.summaryStream('stream test', { lang: 'en' }, event => events.push(event.type));
+    assert.equal(stream.text, 'Hello AXION');
+    assert.equal(stream.model, 'gemma-4-31b-it');
+    assert.deepEqual(events, ['meta', 'delta', 'delta', 'complete']);
+  } finally { global.fetch = originalFetch; }
+  console.log('AXION Search v4.2 smoke tests passed.');
+})().catch(error => { console.error(error); process.exitCode = 1; });

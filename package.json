@@ -1,0 +1,14 @@
+{
+  "name": "axion-search",
+  "version": "4.2.0",
+  "private": true,
+  "description": "AXION Search 4.2 — Cloudflare Pages + Workers, live Google AI Studio Gemma 4 rotation, IndexedDB history, 10ms CPU target.",
+  "scripts": {
+    "dev:api": "cd workers && npx wrangler dev --config wrangler.jsonc",
+    "dev:pages": "cd pages && npx wrangler pages dev ./public --config wrangler.jsonc --service AXION_SEARCH_API=axion-search-api",
+    "deploy:api": "cd workers && npx wrangler deploy --config wrangler.jsonc",
+    "deploy:pages": "cd pages && npx wrangler pages deploy ./public --project-name axion-search-site --config wrangler.jsonc",
+    "test": "node --check workers/src/index.js && node --check workers/src/search-engine.js && node --check \"pages/functions/api/[[path]].js\" && node --check pages/functions/health.js && node --check \"pages/functions/s/[[path]].js\" && node --check pages/public/js/app.js && node --check pages/public/js/home.js && node --check pages/public/js/search.js && node --check pages/public/js/settings.js && node --check pages/public/sdk/axion-search-sdk.js && node tests/smoke-tests.js"
+  },
+  "engines": { "node": ">=18" }
+}

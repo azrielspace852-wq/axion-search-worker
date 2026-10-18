@@ -1,0 +1,20 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "axion-search-api",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-19",
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "api.search.axn.cc.cd", "custom_domain": true }
+  ],
+  "limits": {
+    "cpu_ms": 10
+  },
+  "vars": {
+    "SITE_DOMAIN": "https://search.xxn.cc.cd",
+    "API_DOMAIN": "https://api.search.axn.cc.cd",
+    "SAFESEARCH_DEFAULT": "1",
+    "SILENT": "1",
+    "TIMEOUT_MS": "12000"
+  }
+}
